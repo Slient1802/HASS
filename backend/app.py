@@ -2,26 +2,35 @@
 import os
 from flask import Flask
 from flask_socketio import SocketIO
+from flask import render_template
 from sqlalchemy.orm import Session
 
 from .database import engine, Base, SessionLocal
-from .routes.device import device_bp
-from services.device_manager import DeviceManager
+from .services.device_manager import DeviceManager
 from .routes.auth import auth_bp, login_manager
 from .config import Config
 
+from backend.extensions import socketio   # <-- important
+from backend.routes.auth import auth_bp
+# from backend.routes.user import user_bp
+from backend.routes.device import device_bp
 
 # --- Khởi tạo Flask + Socket.IO ---
 def create_app():
     app = Flask(__name__)
-    app.config.from_object(Config)
+    app.config.from_object("backend.config.Config")
 
-    # Flask-Login
-    login_manager.init_app(app)
+    # Register blueprints
+    app.register_blueprint(auth_bp, url_prefix="/auth")
+    # app.register_blueprint(user_bp, url_prefix="/user")
+    app.register_blueprint(device_bp, url_prefix="/device")
 
-    # Đăng ký blueprint
-    app.register_blueprint(auth_bp)
-    app.register_blueprint(device_bp)
+    socketio.init_app(app)
+
+    # ✅ root route
+    @app.route("/")
+    def home():
+        return render_template("index.html")
 
     return app
 
@@ -89,4 +98,4 @@ def handle_command_ack(data):
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
     print(f"🚀 Starting IoT Lab Live System on http://127.0.0.1:{port}")
-    socketio.run(app, host="0.0.0.0", port=port)
+    socketio.run(app, host="0.0.0.0", port=port, debug=True)

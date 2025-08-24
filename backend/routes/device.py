@@ -7,12 +7,17 @@ from backend.database import get_db
 from backend.models import Device
 from backend.security.sanitizer import sanitize_str
 from backend.services.device_manager import DeviceManager
-from backend.app import socketio  # socketio được tạo trong app.py
+from backend.extensions import socketio
 
-device_bp = Blueprint("device", __name__, url_prefix="/device")
+device_bp = Blueprint("device", __name__)
 
 # Service manager với socketio
 device_manager = DeviceManager(socketio)
+
+@device_bp.route("/test", methods=["GET"])
+def test_device():
+    socketio.emit("device_test", {"msg": "Hello from device!"})
+    return jsonify({"status": "ok"})
 
 
 @device_bp.route("/register", methods=["POST"])
