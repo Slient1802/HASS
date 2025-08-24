@@ -1,0 +1,15 @@
+Flask==3.0.2
+Flask-SocketIO==5.3.6
+python-socketio==5.11.2
+simple-websocket==1.0.0
+Flask-Login==0.6.3
+Flask-Limiter==3.8.0
+Flask-WTF==1.2.1
+WTForms==3.1.2
+SQLAlchemy==2.0.29
+psycopg2-binary==2.9.9 # or sqlite, see config
+passlib[bcrypt]==1.7.4
+itsdangerous==2.2.0
+python-dotenv==1.0.1
+pyjwt==2.8.0
+Eventlet==0.36.1 # recommended for Socket.IO server
