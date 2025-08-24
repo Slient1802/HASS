@@ -1,0 +1,40 @@
+<!-- backend/templates/dashboard.html -->
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-5">
+    <h2>📊 Dashboard</h2>
+    <p>Welcome, {{ session['user'] }}!</p>
+
+    <hr>
+
+    <h4>🎓 Student Queue</h4>
+    <table class="table table-bordered">
+        <thead>
+            <tr>
+                <th>Queue ID</th>
+                <th>Student Name</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for q in queue %}
+            <tr>
+                <td>{{ q.id }}</td>
+                <td>{{ q.name }}</td>
+                <td>{{ q.status }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <hr>
+
+    <h4>⚙️ Hardware Control</h4>
+    <form method="post" action="{{ url_for('dashboard.control') }}">
+        <button type="submit" name="action" value="on" class="btn btn-success">Turn ON Hardware</button>
+        <button type="submit" name="action" value="off" class="btn btn-danger">Turn OFF Hardware</button>
+        <button type="submit" name="action" value="test" class="btn btn-warning">Test Queue Control</button>
+    </form>
+</div>
+{% endblock %}

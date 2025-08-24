@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, render_template, request, redirect, url_for, session, flash
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from typing import cast
@@ -49,35 +49,31 @@ def register():
 
 
 # === LOGIN ===
-@auth_bp.route("/login", methods=["POST"])
+@auth_bp.route("/login", methods=["GET", "POST"])
 def login():
-    data = request.get_json() or {}
+    if request.method == "POST":
+        username = request.form.get("username")
+        password = request.form.get("password")
 
-    username = sanitize_str(data.get("username"), max_length=64)
-    password = data.get("password")
+        # TODO: Replace with real authentication
+        if username == "admin" and password == "1234":
+            session["user"] = username
+            flash("Login successful!", "success")
+            return redirect(url_for("home"))
+        else:
+            flash("Invalid credentials", "danger")
+            return redirect(url_for("auth.login"))
 
-    if not username or not password:
-        return jsonify({"error": "Missing username or password"}), 400
-
-    db = next(get_db())
-    user = db.query(User).filter_by(username=username).first()
-    if not user or not check_password_hash(user.password_hash, password):
-        return jsonify({"error": "Invalid username or password"}), 401
-
-    login_user(user, remember=True)
-
-    return jsonify({
-        "message": "Login successful",
-        "user": {"id": user.id, "username": user.username, "role": user.role}
-    })
+    # If GET request → show login form
+    return render_template("login.html")
 
 
 # === LOGOUT ===
-@auth_bp.route("/logout", methods=["POST"])
-@login_required
+@auth_bp.route("/logout")
 def logout():
-    logout_user()
-    return jsonify({"message": "Logged out successfully"})
+    session.pop("user", None)
+    flash("You have been logged out.", "info")
+    return redirect(url_for("auth.login"))
 
 
 # === GET CURRENT USER ===
