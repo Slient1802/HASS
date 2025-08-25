@@ -1,138 +1,127 @@
 import os
 import fnmatch
 
-def list_project_files(project_path='.'):
+def _is_ignored(path, ignore_patterns):
     """
-    Lists all files within the specified project directory and its subdirectories,
-    ignoring files and directories specified in a .gitignore file.
+    Checks if a given path should be ignored based on .gitignore patterns.
+    
+    Args:
+        path (str): The path to check, relative to the project root.
+        ignore_patterns (list): A list of .gitignore patterns.
+        
+    Returns:
+        bool: True if the path should be ignored, False otherwise.
+    """
+    # Normalize the path for consistent matching
+    path = os.path.normpath(path)
 
+    for pattern in ignore_patterns:
+        # A pattern ending with a slash only matches a directory
+        is_directory_pattern = pattern.endswith('/')
+        pattern_to_match = pattern.rstrip('/')
+
+        # Handle directory-specific patterns
+        if is_directory_pattern:
+            # Match the full relative path if it's a directory
+            if os.path.isdir(os.path.join('.', path)) and fnmatch.fnmatch(path, pattern_to_match):
+                return True
+            # Also handle patterns for subdirectories (e.g., 'build/' matches 'src/build/')
+            if fnmatch.fnmatch(path, f"*/{pattern_to_match}"):
+                return True
+        else:
+            # Handle patterns that match the full relative path
+            if fnmatch.fnmatch(path, pattern):
+                return True
+            # Handle patterns that only match the filename (e.g., '*.log')
+            if fnmatch.fnmatch(os.path.basename(path), pattern):
+                return True
+            
+    return False
+
+def generate_file_tree(project_path='.'):
+    """
+    Generates a list of files and directories in a tree-like format,
+    respecting .gitignore rules.
+    
     Args:
         project_path (str): The path to the project directory.
-                            Defaults to '.' (the current directory).
+        
+    Returns:
+        str: The formatted file tree content as a single string.
     """
-    print(f"--- Files in project: {os.path.abspath(project_path)} ---")
-
-    gitignore_path = os.path.join(project_path, '.gitignore')
+    project_path = os.path.abspath(project_path)
+    file_list = []
+    
+    # Read .gitignore patterns
     ignore_patterns = []
-
+    gitignore_path = os.path.join(project_path, '.gitignore')
     if os.path.exists(gitignore_path):
         with open(gitignore_path, 'r') as f:
             for line in f:
                 line = line.strip()
                 if line and not line.startswith('#'):
-                    # Gitignore patterns can be tricky. This aims for common cases.
-                    # Handle leading slashes: /foo matches foo only at the root of the repo
-                    if line.startswith('/'):
-                        # Store as relative path from project_path without leading slash
-                        ignore_patterns.append(line[1:])
-                    else:
-                        ignore_patterns.append(line)
-        print(f"--- .gitignore found. Ignoring patterns: {ignore_patterns} ---")
-    else:
-        print("--- No .gitignore found. All files will be listed. ---")
+                    # Strip leading slash as fnmatch works better on relative paths
+                    ignore_patterns.append(line.lstrip('/'))
 
     for root, dirs, files in os.walk(project_path):
-        # Calculate the relative path from the project_path to the current root
         relative_root = os.path.relpath(root, project_path)
+
+        # Crucial step: Explicitly remove the .git directory and others from the start
+        # of the list to prevent walking into them.
+        dirs_to_remove = ['.git']
+        dirs_to_remove.extend([d for d in dirs if _is_ignored(os.path.join(relative_root, d), ignore_patterns)])
         
-        # Normalize relative_root for consistent matching (e.g., '.' becomes '')
-        if relative_root == '.':
-            normalized_relative_root = ''
-        else:
-            normalized_relative_root = relative_root + os.sep # Add separator for directory matching
+        for d in dirs_to_remove:
+            if d in dirs:
+                dirs.remove(d)
 
-        # Always explicitly remove .git directory if it's found
-        if '.git' in dirs and os.path.normpath(os.path.join(relative_root, '.git')) == os.path.normpath('.git'):
-            dirs.remove('.git')
+        # Add the current directory to the list if it's not the root and is not ignored
+        if relative_root != '.' and not _is_ignored(relative_root, ignore_patterns):
+            file_list.append(relative_root.replace('\\', '/') + '/')
+        
+        # Add non-ignored files
+        for file in files:
+            file_path_relative_to_project = os.path.join(relative_root, file)
+            if not _is_ignored(file_path_relative_to_project, ignore_patterns):
+                # Format the path for the output
+                if relative_root == '.':
+                    file_list.append(file)
+                else:
+                    file_list.append(os.path.join(relative_root, file).replace('\\', '/'))
+                    
+    # Ensure directories are correctly added to the list, even if they contain no files
+    final_paths = set()
+    for path in file_list:
+        final_paths.add(path)
+        parts = path.split('/')
+        if len(parts) > 1:
+            for i in range(1, len(parts)):
+                parent_dir = '/'.join(parts[:i]) + '/'
+                final_paths.add(parent_dir)
 
-        # Filter out ignored directories before processing files
-        # We iterate over a copy of `dirs` to safely remove items
-        dirs_to_remove = []
-        for d in dirs:
-            # Path for checking against patterns (e.g., "src/build" or "temp_folder")
-            full_dir_path_relative_to_project = os.path.normpath(os.path.join(normalized_relative_root, d))
-            
-            is_ignored = False
-            for pattern in ignore_patterns:
-                # Handle directory patterns (e.g., build/, /build)
-                # Ensure trailing slash for directory patterns when matching
-                if pattern.endswith('/'):
-                    # Match if the directory path starts with the pattern (for sub-directories)
-                    if fnmatch.fnmatch(full_dir_path_relative_to_project + os.sep, pattern):
-                        is_ignored = True
-                        break
-                    # For root-level directory patterns, also check exact match with leading slash
-                    elif pattern.startswith('/') and fnmatch.fnmatch(full_dir_path_relative_to_project, pattern[1:]):
-                         is_ignored = True
-                         break
-                # Handle direct folder name matches (e.g., .vscode, my_folder)
-                # Check both full path relative to project and just the directory name
-                elif fnmatch.fnmatch(full_dir_path_relative_to_project, pattern) or fnmatch.fnmatch(d, pattern):
-                    is_ignored = True
-                    break
+    # Sort the unique paths for a clean, consistent output
+    sorted_paths = sorted(list(final_paths))
 
-            if is_ignored:
-                dirs_to_remove.append(d)
+    return "\n".join(sorted_paths)
 
-        for d_to_remove in dirs_to_remove:
-            if d_to_remove in dirs:
-                dirs.remove(d_to_remove)
+def list_project_files(project_path='.'):
+    """
+    Main function to generate the file list and save it to a file.
+    """
+    output_filename = "dir.txt"
+    file_tree_content = generate_file_tree(project_path)
 
-        # Determine the path to display
-        display_path = "Current Directory" if relative_root == '.' else relative_root
-
-        # Check if the current directory itself should be ignored based on patterns
-        # This is mainly for the case where `os.walk` yields a directory that matches an ignore pattern
-        is_current_dir_ignored = False
-        for pattern in ignore_patterns:
-            # Match directories with trailing slash (e.g., `build/`)
-            if pattern.endswith('/'):
-                if fnmatch.fnmatch(normalized_relative_root, pattern): # Check if the current root matches a directory pattern
-                    is_current_dir_ignored = True
-                    break
-            # Match exact directory names (e.g., `my_folder`)
-            elif fnmatch.fnmatch(relative_root, pattern):
-                is_current_dir_ignored = True
-                break
-            
-        if not is_current_dir_ignored:
-            print(f"\nDirectory: {display_path}/")
-
-            # Filter out ignored files
-            filtered_files = []
-            for file in files:
-                full_file_path_relative_to_project = os.path.normpath(os.path.join(normalized_relative_root, file))
-                
-                is_ignored = False
-                for pattern in ignore_patterns:
-                    # Handle patterns matching the full relative path (e.g., /config.ini)
-                    if fnmatch.fnmatch(full_file_path_relative_to_project, pattern):
-                        is_ignored = True
-                        break
-                    # Handle patterns matching just the filename (e.g., *.log, temp.*)
-                    elif fnmatch.fnmatch(file, pattern):
-                        is_ignored = True
-                        break
-                        
-                if not is_ignored:
-                    filtered_files.append(file)
-
-            if filtered_files:
-                for file in filtered_files:
-                    print(f"  - {file}")
-            else:
-                print("  (No files in this directory or all files are ignored)")
+    print(f"--- Generating file list for: {os.path.abspath(project_path)} ---")
+    
+    try:
+        with open(output_filename, 'w') as f:
+            f.write(file_tree_content)
+        print(f"--- File list successfully saved to {output_filename} ---")
+    except IOError as e:
+        print(f"Error: Unable to write to file {output_filename}. {e}")
+    
+    print("\n--- Content of dir.txt ---")
+    print(file_tree_content)
 
 if __name__ == "__main__":
-    # How to use:
-    # 1. Save this code as a Python file (e.g., `list_repo_files.py`).
-    # 2. Open your terminal or command prompt.
-    # 3. Navigate to the root directory of your local GitHub repository.
-    #    Example: cd /Users/yourusername/Documents/GitHub/your-repo-name
-    # 4. Run the script: python list_repo_files.py
-
-    # The '.' refers to the current working directory, which should be
-    # the root of your local GitHub repository when you run the script there.
-    project_directory = "."
-    
-    list_project_files(project_directory)
+    list_project_files()

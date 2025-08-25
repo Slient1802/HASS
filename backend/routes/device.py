@@ -1,6 +1,7 @@
 # backend/routes/device.py
 
 from flask import Blueprint, request, jsonify
+from flask_login import login_required, current_user
 from flask_jwt_extended import jwt_required, get_jwt_identity
 
 from backend.database import get_db
@@ -12,7 +13,7 @@ from backend.extensions import socketio
 device_bp = Blueprint("device", __name__)
 
 # Service manager với socketio
-device_manager = DeviceManager(socketio)
+device_manager = DeviceManager()
 
 @device_bp.route("/test", methods=["GET"])
 def test_device():
@@ -29,15 +30,15 @@ def register_device():
     try:
         data = request.get_json() or {}
         name = sanitize_str(data.get("name"))
-        hw_type = sanitize_str(data.get("type"))  # "arduino" hoặc "raspberry_pi"
+        type = sanitize_str(data.get("type"))  # "arduino" hoặc "raspberry_pi"
 
-        if not name or not hw_type:
+        if not name or not type:
             return jsonify({"error": "Missing device name or type"}), 400
 
         user_id = get_jwt_identity()
 
         db = next(get_db())
-        new_device = Device(name=name, hw_type=hw_type, owner_id=user_id)
+        new_device = Device(name=name, type=type, owner_id=user_id)
         db.add(new_device)
         db.commit()
 
@@ -65,7 +66,7 @@ def update_device(device_id):
         if "name" in data:
             device.name = sanitize_str(data["name"])
         if "type" in data:
-            device.hw_type = sanitize_str(data["type"])
+            device.type = sanitize_str(data["type"])
         if "status" in data:
             device.status = sanitize_str(data["status"])
 
@@ -112,7 +113,7 @@ def start_device(device_id):
             return jsonify({"error": "Device not found"}), 404
 
         # Gửi lệnh xuống hardware client
-        device_manager.send_command(device.id, {"action": "START"})
+        device_manager.send_command(device.id, current_user.id, "START")
 
         device.status = "running"
         db.commit()
@@ -135,7 +136,7 @@ def stop_device(device_id):
         if not device:
             return jsonify({"error": "Device not found"}), 404
 
-        device_manager.send_command(device.id, {"action": "STOP"})
+        device_manager.send_command(device.id, current_user.id, "STOP")
 
         device.status = "stopped"
         db.commit()
@@ -158,7 +159,7 @@ def reset_watchdog(device_id):
         if not device:
             return jsonify({"error": "Device not found"}), 404
 
-        device_manager.send_command(device.id, {"action": "WATCHDOG_RESET"})
+        device_manager.send_command(device.id, current_user.id, "WATCHDOG_RESET")
         return jsonify({"message": "Watchdog reset signal sent"}), 200
 
     except Exception as e:
@@ -183,7 +184,7 @@ def send_custom_command(device_id):
             return jsonify({"error": "Missing command"}), 400
 
         cmd = sanitize_str(data["command"])
-        device_manager.send_command(device.id, {"action": cmd})
+        device_manager.send_command(device.id, current_user.id, cmd)
 
         return jsonify({"message": f"Command '{cmd}' sent to {device.name}"}), 200
 

@@ -1,40 +1,112 @@
-<!-- backend/templates/dashboard.html -->
 {% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
 
 {% block content %}
-<div class="container mt-5">
-    <h2>📊 Dashboard</h2>
-    <p>Welcome, {{ session['user'] }}!</p>
+<div class="container mt-4">
+  <h2>📊 Dashboard</h2>
+  <p>Welcome, {{ session['user'] }}!</p>
 
-    <hr>
-
-    <h4>🎓 Student Queue</h4>
-    <table class="table table-bordered">
-        <thead>
-            <tr>
-                <th>Queue ID</th>
-                <th>Student Name</th>
-                <th>Status</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for q in queue %}
-            <tr>
-                <td>{{ q.id }}</td>
-                <td>{{ q.name }}</td>
-                <td>{{ q.status }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
+  <div id="panels">
+    <h4>Users</h4>
+    <table class="table table-bordered" id="tbl-users">
+      <thead><tr><th>ID</th><th>Username</th><th>Online</th><th>Last Seen</th></tr></thead>
+      <tbody></tbody>
     </table>
 
-    <hr>
+    <h4 class="mt-4">Devices</h4>
+    <table class="table table-bordered" id="tbl-devices">
+      <thead>
+        <tr>
+          <th>ID</th><th>UID</th><th>Name</th><th>Type</th>
+          <th>Status</th><th>Code Uploaded</th><th>Last Seen</th><th>Actions</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
 
-    <h4>⚙️ Hardware Control</h4>
-    <form method="post" action="{{ url_for('dashboard.control') }}">
-        <button type="submit" name="action" value="on" class="btn btn-success">Turn ON Hardware</button>
-        <button type="submit" name="action" value="off" class="btn btn-danger">Turn OFF Hardware</button>
-        <button type="submit" name="action" value="test" class="btn btn-warning">Test Queue Control</button>
-    </form>
+    <h4 class="mt-4">Command Queue (last 50)</h4>
+    <table class="table table-bordered" id="tbl-queue">
+      <thead>
+        <tr>
+          <th>ID</th><th>Device</th><th>User</th><th>Command</th>
+          <th>Status</th><th>Created</th><th>Sent</th><th>Ack</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
 </div>
+
+<script>
+async function loadStatus() {
+  const res = await fetch("/dashboard/status");
+  if (!res.ok) return;
+  const data = await res.json();
+
+  // Users
+  const ub = document.querySelector("#tbl-users tbody");
+  ub.innerHTML = (data.users || []).map(u => `
+    <tr>
+      <td>${u.id}</td>
+      <td>${u.username}</td>
+      <td>${u.online ? "🟢" : "⚪"}</td>
+      <td>${u.last_seen || ""}</td>
+    </tr>
+  `).join("");
+
+  // Devices
+  const db = document.querySelector("#tbl-devices tbody");
+  db.innerHTML = (data.devices || []).map(d => `
+    <tr>
+      <td>${d.id}</td>
+      <td>${d.device_uid}</td>
+      <td>${d.name}</td>
+      <td>${d.type}</td>
+      <td>${d.status}</td>
+      <td>${d.code_uploaded ? "✅" : "❌"}</td>
+      <td>${d.last_seen || ""}</td>
+      <td>
+        <button onclick="act(${d.id}, 'start')">Start</button>
+        <button onclick="act(${d.id}, 'stop')">Stop</button>
+        <button onclick="act(${d.id}, 'watchdog_reset')">WD Reset</button>
+        <button onclick="act(${d.id}, 'cmd:LED_ON')">LED ON</button>
+        <button onclick="act(${d.id}, 'cmd:LED_OFF')">LED OFF</button>
+        <button onclick="act(${d.id}, 'mark_uploaded')">Mark Uploaded</button>
+        <button onclick="act(${d.id}, 'mark_not_uploaded')">Unmark Upload</button>
+      </td>
+    </tr>
+  `).join("");
+
+  // Queue
+  const qb = document.querySelector("#tbl-queue tbody");
+  qb.innerHTML = (data.queue || []).map(c => `
+    <tr>
+      <td>${c.id}</td>
+      <td>${c.device_id}</td>
+      <td>${c.user_id}</td>
+      <td>${c.command}</td>
+      <td>${c.status}</td>
+      <td>${c.created_at}</td>
+      <td>${c.sent_at || ""}</td>
+      <td>${c.ack_time || ""}</td>
+    </tr>
+  `).join("");
+}
+
+async function act(device_id, action) {
+  const res = await fetch("/dashboard/control", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ device_id, action })
+  });
+  const js = await res.json();
+  if (!res.ok) {
+    alert("Error: " + (js.error || "unknown"));
+  }
+  loadStatus();
+}
+
+loadStatus();
+setInterval(loadStatus, 3000);
+</script>
 {% endblock %}
