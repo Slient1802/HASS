@@ -12,6 +12,6 @@ passlib[bcrypt]==1.7.4
 itsdangerous==2.2.0
 python-dotenv==1.0.1
 pyjwt==2.8.0
-Eventlet==0.36.1 # recommended for Socket.IO server
+Eventlet==0.40.3 # recommended for Socket.IO server
 
 # pip install --upgrade python-socketio   
